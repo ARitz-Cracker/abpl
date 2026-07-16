@@ -17,16 +17,22 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 
 	let mut variant_provider_fn_name_to_trait = HashMap::<syn::Ident, Vec<syn::Path>>::new();
 	let mut provider_trait_match_body = HashMap::<syn::Path, TokenStream>::new();
+	// So the per-variant loop below can resolve `cause` (delegate-to-cause) return values back
+	// to the trait's own method name and default, without waiting for the final assembly loop.
+	let mut provider_trait_fn_name = HashMap::<syn::Path, syn::Ident>::new();
+	let mut provider_trait_default_return_value = HashMap::<syn::Path, syn::Expr>::new();
 
 	for item in top_level_provider_attr.items.iter() {
 		let Some(fn_name) = item.fn_name.clone() else {
 			return Err(syn::Error::new_spanned(&item.trait_or_fn_name, "expected 3 arguments"));
 		};
 		variant_provider_fn_name_to_trait
-			.entry(fn_name)
+			.entry(fn_name.clone())
 			.or_default()
 			.push(item.trait_or_fn_name.clone());
 		provider_trait_match_body.insert(item.trait_or_fn_name.clone(), TokenStream::new());
+		provider_trait_fn_name.insert(item.trait_or_fn_name.clone(), fn_name);
+		provider_trait_default_return_value.insert(item.trait_or_fn_name.clone(), item.return_value.clone());
 	}
 
 	let new_error_trace = match top_level_error_attr.trace_kind {
@@ -117,6 +123,16 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 			}
 			pub fn kind(&self) -> &#input_ident {
 				&self.kind
+			}
+		}
+		impl ::core::fmt::Display for #generated_struct_ident {
+			fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+				::abpl::error::fmt_generated_error(f, &self.kind, &self.trace, self.cause.as_deref())
+			}
+		}
+		impl ::core::error::Error for #generated_struct_ident {
+			fn source(&self) -> ::core::option::Option<&(dyn ::core::error::Error + 'static)> {
+				self.cause.as_deref()
 			}
 		}
 	});
@@ -222,7 +238,7 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 							// Can't use map_err because of #[track_caller]
 							match self {
 								Ok(inner) => Ok(inner),
-								Err(input) => Err(Test::new_with_cause(#input_ident::#variant_ident #enum_fields_with_paren, Some(input))),
+								Err(input) => Err(#generated_struct_ident::new_with_cause(#input_ident::#variant_ident #enum_fields_with_paren, Some(input))),
 							}
 						}
 					}
@@ -292,7 +308,35 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 				syn::Fields::Unit => quote! { #input_ident::#variant_ident },
 			};
 			let return_value = &provider_attr.return_value;
-			provider_trait_match_body.append_all(quote! {#match_arm_ts => {#return_value}, });
+			if let syn::Expr::Path(return_value_path) = return_value
+				&& return_value_path.path.is_ident("cause")
+			{
+				if variant_detail.causes.is_empty() {
+					return Err(syn::Error::new_spanned(
+						return_value_path,
+						"cause delegation requires at least one #[cause(..)] on this variant",
+					));
+				}
+				let provider_fn_name = &provider_trait_fn_name[trait_name];
+				let default_return_value = &provider_trait_default_return_value[trait_name];
+				// Try each declared cause in turn (via downcast, same as the serde path); if
+				// none match -- no cause set, or some other type entirely -- fall back to
+				// whatever the trait's own default would have produced for this variant.
+				let mut downcast_chain = quote! { #default_return_value };
+				for cause in variant_detail.causes.iter().rev() {
+					let cause_ty = &cause.cause;
+					downcast_chain = quote! {
+						if let ::core::option::Option::Some(__abpl_cause) = self.cause.as_deref().and_then(|__abpl_c| __abpl_c.downcast_ref::<#cause_ty>()) {
+							__abpl_cause.#provider_fn_name()
+						} else {
+							#downcast_chain
+						}
+					};
+				}
+				provider_trait_match_body.append_all(quote! {#match_arm_ts => {#downcast_chain}, });
+			} else {
+				provider_trait_match_body.append_all(quote! {#match_arm_ts => {#return_value}, });
+			}
 		}
 	}
 
@@ -347,9 +391,46 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 		let parseable_struct_ident = syn::Ident::new(&format!("Parsable{struct_name_str}"), Span::call_site());
 		let kind_and_cause_ident = syn::Ident::new(&format!("{struct_name_str}KindAndCause"), Span::call_site());
 
+		// Named fields are self-terminating (`{ .. }`) when used as a pattern or a construction
+		// expression, so the same tokens work for both directions; Unit/Unnamed just need
+		// consistent placeholder names (`arg_N`) to bind/rebind through.
+		fn fields_bind_pattern(fields: &syn::Fields) -> TokenStream {
+			match fields {
+				syn::Fields::Unit => TokenStream::new(),
+				syn::Fields::Named(fields_named) => {
+					let idents: Vec<syn::Ident> = fields_named
+						.named
+						.iter()
+						.map(|field| field.ident.clone().expect("named fields should have names"))
+						.collect();
+					quote! { { #(#idents),* } }
+				},
+				syn::Fields::Unnamed(fields_unnamed) => {
+					let idents: Vec<syn::Ident> = (0..fields_unnamed.unnamed.len())
+						.map(|i| syn::Ident::new(&format!("arg_{i}"), Span::call_site()))
+						.collect();
+					quote! { ( #(#idents),* ) }
+				},
+			}
+		}
+
 		let mut kind_and_cause_variants = TokenStream::new();
 		let mut detail_structs: TokenStream = TokenStream::new();
 		let mut cause_enums = TokenStream::new();
+		let mut serialize_match_arms = TokenStream::new();
+		let mut deserialize_match_arms = TokenStream::new();
+
+		// `#kind_and_cause_ident`/`#parseable_struct_ident` only need to be generic over `'a`
+		// if some variant somewhere actually has a `MaybeBorrowed<'a, _>` to hold; otherwise
+		// declaring `<'a>` on them would itself be an unused lifetime parameter.
+		let any_variant_has_borrowed_causes = enum_variant_details
+			.iter()
+			.any(|variant_detail| variant_detail.causes.iter().any(|cause| !cause.unserializable));
+		let kind_and_cause_lifetime = if any_variant_has_borrowed_causes {
+			quote! { <'a> }
+		} else {
+			TokenStream::new()
+		};
 
 		for variant_detail in enum_variant_details.iter() {
 			let variant_ident = &variant_detail.ident;
@@ -369,15 +450,14 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 			derives.to_tokens(&mut detail_structs);
 			detail_struct.to_tokens(&mut detail_structs);
 
-			kind_and_cause_variants.append_all(quote! {
-				#variant_ident {
-					#[serde(rename = "errorCause")]
-					cause: #cause_enum_ident,
-					#[serde(rename = "errorDetail")]
-					detail: #detail_ident
-				},
-			});
+			let fields_pattern = fields_bind_pattern(detail_fields);
+
 			let mut cause_enum_variants = TokenStream::new();
+			let mut cause_reconstruction_arms = TokenStream::new();
+			// Ordered "try each declared, non-unserializable cause type via downcast, else
+			// erase" chain used on the serialize path; `Option::or_else` short-circuits on the
+			// first match, same precedence the deserialize side's `#[serde(untagged)]` gives.
+			let mut cause_downcast_chain = quote! { ::core::option::Option::None };
 			for (i, cause) in variant_detail.causes.iter().enumerate() {
 				if cause.unserializable {
 					// error types marked as unserializable should use ::abpl::error::UnserializableError::from_error
@@ -387,17 +467,86 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 				let cause_enum_variant_ident = syn::Ident::new(&format!("E{i}"), Span::call_site());
 				let cause_type = &cause.cause;
 				cause_enum_variants.append_all(quote! {
-					#cause_enum_variant_ident(#cause_type),
+					#cause_enum_variant_ident(::abpl::types::MaybeBorrowed<'a, #cause_type>),
 				});
+				cause_reconstruction_arms.append_all(quote! {
+					::core::option::Option::Some(#cause_enum_ident::#cause_enum_variant_ident(::abpl::types::MaybeBorrowed::Owned(__abpl_v))) => {
+						let __abpl_boxed: ::abpl::maybe_std::Rc<dyn ::core::error::Error> = ::abpl::maybe_std::Rc::new(__abpl_v);
+						::core::option::Option::Some(__abpl_boxed)
+					},
+					::core::option::Option::Some(#cause_enum_ident::#cause_enum_variant_ident(::abpl::types::MaybeBorrowed::Borrowed(_))) =>
+						::core::unreachable!("MaybeBorrowed::Borrowed is never produced by deserialize"),
+				});
+				cause_downcast_chain = quote! {
+					#cause_downcast_chain.or_else(|| {
+						self.cause.as_deref()
+							.and_then(|__abpl_c| __abpl_c.downcast_ref::<#cause_type>())
+							.map(|__abpl_v| #cause_enum_ident::#cause_enum_variant_ident(::abpl::types::MaybeBorrowed::Borrowed(__abpl_v)))
+					})
+				};
 			}
+			// Only generic over `'a` if this variant actually has a declared, non-`unserializable`
+			// cause to hold as `MaybeBorrowed<'a, _>`; otherwise `'a` would go unused.
+			let cause_enum_lifetime = if cause_enum_variants.is_empty() {
+				TokenStream::new()
+			} else {
+				quote! { <'a> }
+			};
 			cause_enums.append_all(quote! {
 				#derives
-				enum #cause_enum_ident {
+				// Lets the deserializer try each declared cause type (and then the erased /
+				// unknown fallbacks) in turn, since there's no explicit tag to dispatch on.
+				#[serde(untagged)]
+				enum #cause_enum_ident #cause_enum_lifetime {
 					#cause_enum_variants
 					Erased(::abpl::error::UnserializableError),
 					#[serde(skip_serializing)]
 					Unknown(::serde::de::IgnoredAny),
 				}
+			});
+
+			// `cause` is `Option`-wrapped because `Test::new(kind)` can leave the wrapper's
+			// `cause` as `None` for any variant, even ones that declare `#[cause(..)]`. It's
+			// generic over `'a` because each declared, non-`unserializable` cause type is held
+			// as `MaybeBorrowed<'a, Type>`, which lets the serialize path hand over a downcast
+			// `&Type` directly (no `Clone`/`ToOwned` bound needed) while deserialize always
+			// produces an owned value regardless of `'a`.
+			kind_and_cause_variants.append_all(quote! {
+				#variant_ident {
+					#[serde(rename = "errorCause", default, skip_serializing_if = "Option::is_none")]
+					cause: ::core::option::Option<#cause_enum_ident #cause_enum_lifetime>,
+					#[serde(rename = "errorDetail")]
+					detail: #detail_ident
+				},
+			});
+
+			// Try each declared cause type in turn (via downcast, borrowing rather than
+			// cloning); if none match -- either a foreign cause type, or one explicitly marked
+			// `unserializable` -- fall back to erasing it via `UnserializableError::from_error`.
+			serialize_match_arms.append_all(quote! {
+				#input_ident::#variant_ident #fields_pattern => #kind_and_cause_ident::#variant_ident {
+					cause: #cause_downcast_chain.or_else(|| {
+						self.cause.as_deref().map(|__abpl_c| {
+							#cause_enum_ident::Erased(::abpl::error::UnserializableError::from_error(__abpl_c))
+						})
+					}),
+					detail: #detail_ident #fields_pattern,
+				},
+			});
+
+			deserialize_match_arms.append_all(quote! {
+				#kind_and_cause_ident::#variant_ident { cause, detail: #detail_ident #fields_pattern } => (
+					#input_ident::#variant_ident #fields_pattern,
+					match cause {
+						#cause_reconstruction_arms
+						::core::option::Option::Some(#cause_enum_ident::Erased(__abpl_erased)) => {
+							let __abpl_boxed: ::abpl::maybe_std::Rc<dyn ::core::error::Error> = ::abpl::maybe_std::Rc::new(__abpl_erased);
+							::core::option::Option::Some(__abpl_boxed)
+						},
+						::core::option::Option::Some(#cause_enum_ident::Unknown(_))
+						| ::core::option::Option::None => ::core::option::Option::None,
+					},
+				),
 			});
 		}
 
@@ -406,17 +555,79 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 			#cause_enums
 
 			#derives
-			enum #kind_and_cause_ident {
+			#[serde(tag = "errorKind", rename_all = "camelCase")]
+			enum #kind_and_cause_ident #kind_and_cause_lifetime {
 				#kind_and_cause_variants
 			}
 			#derives
-			struct #parseable_struct_ident {
+			struct #parseable_struct_ident #kind_and_cause_lifetime {
+				#[serde(rename = "errorMessage")]
+				msg: String,
 				#[serde(rename = "errorTrace")]
 				trace: ::abpl::error::ErrorTrace,
 				#[serde(flatten)]
-				detail: #kind_and_cause_ident,
+				detail: #kind_and_cause_ident #kind_and_cause_lifetime,
 			}
 		});
+
+		if top_level_error_attr.serialize {
+			sealed_body.append_all(quote! {
+				impl ::serde::Serialize for #generated_struct_ident {
+					fn serialize<S>(&self, serializer: S) -> ::core::result::Result<S::Ok, S::Error>
+					where
+						S: ::serde::Serializer,
+					{
+						let __abpl_detail = match self.kind.clone() {
+							#serialize_match_arms
+						};
+						::serde::Serialize::serialize(
+							&#parseable_struct_ident {
+								msg: self.kind.to_string(),
+								trace: self.trace.clone(),
+								detail: __abpl_detail,
+							},
+							serializer,
+						)
+					}
+				}
+			});
+		}
+
+		if top_level_error_attr.deserialize {
+			sealed_body.append_all(quote! {
+				impl<'de> ::serde::Deserialize<'de> for #generated_struct_ident {
+					fn deserialize<D>(deserializer: D) -> ::core::result::Result<Self, D::Error>
+					where
+						D: ::serde::Deserializer<'de>,
+					{
+						let __abpl_parseable = <#parseable_struct_ident as ::serde::Deserialize>::deserialize(deserializer)?;
+						let (kind, cause) = match __abpl_parseable.detail {
+							#deserialize_match_arms
+						};
+						::core::result::Result::Ok(Self {
+							kind,
+							cause,
+							trace: __abpl_parseable.trace,
+						})
+					}
+				}
+			});
+		}
+
+		if top_level_error_attr.utoipa {
+			sealed_body.append_all(quote! {
+				impl ::utoipa::PartialSchema for #generated_struct_ident {
+					fn schema() -> ::utoipa::openapi::RefOr<::utoipa::openapi::schema::Schema> {
+						<#parseable_struct_ident as ::utoipa::PartialSchema>::schema()
+					}
+				}
+				impl ::utoipa::ToSchema for #generated_struct_ident {
+					fn name() -> ::std::borrow::Cow<'static, str> {
+						::std::borrow::Cow::Borrowed(#struct_name_str)
+					}
+				}
+			});
+		}
 	}
 	Ok(quote! {
 		#exported_body

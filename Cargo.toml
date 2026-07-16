@@ -45,6 +45,10 @@ thread = [ "sync" ]
 # Sync utilities, like mithridate
 sync = []
 
+# Enables every feature currently exercised by the test suite. Not meant for use outside
+# `cargo test`/`cargo check --tests` -- run those with `--features test`.
+test = ["derive_error", "serde", "app", "utoipa", "thread"]
+
 [dev-dependencies]
 serde_json = { version = "1.0.150" }
 
