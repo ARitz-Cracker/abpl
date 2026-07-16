@@ -1,0 +1,16 @@
+{
+    "rust-analyzer.cargo.features": [
+        
+        "app",
+        "serde",
+        "utoipa",
+        
+        "thread",
+        "sync",
+        "newtype_base64",
+        "derive_error"
+        
+    ],
+    "nixEnvSelector.nixFile": "${workspaceFolder}/shell.nix",
+    "nixEnvSelector.useFlakes": false
+}

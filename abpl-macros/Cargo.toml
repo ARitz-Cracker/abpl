@@ -1,0 +1,14 @@
+[package]
+name = "abpl-macros"
+version = "0.1.0"
+edition = "2024"
+license = "LicenseRef-Caraneer-Proprietary"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
+convert_case = "0.11.0"
