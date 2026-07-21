@@ -24,20 +24,54 @@ mod error;
 ///   `#[track_caller]`), and `{Name}::kind(&self) -> &{Kind}`.
 /// - `impl Display for {Name}`, with format modifiers for causal-chain rendering (see below).
 /// - `impl core::error::Error for {Name}`, with `source()` returning the cause.
+/// - `{Name}::{variant}(fields...)` for every variant with no `#[cause(..)]` at all (see
+///   "Constructing values" below).
 ///
-/// # `#[cause(Type)]` / `#[cause(Type, unserializable)]`
+/// # Constructing values
 ///
-/// Attach to a variant to declare a type that can produce it. Repeatable on the same variant.
+/// How you build a `{Name}` depends on whether the variant declares a `#[cause(..)]`:
 ///
-/// - If the variant is a unit variant and `Type` isn't shared with any other variant in the
-///   enum, this generates `impl From<Type> for {Name}`, so `some_io_call()?` works directly via
-///   `?`'s `.into()`.
-/// - Otherwise (the variant has fields, or `Type` is declared on more than one variant), it
-///   generates a `ResultInto{Name}{Variant}<T>` trait with a `map_err_{variant}` method, so you
-///   write `some_call().map_err_variant(field_a, field_b)?` instead of a hand-rolled `map_err`
-///   closure -- and unlike `map_err`, this preserves `#[track_caller]` span info through the `?`.
-/// - `unserializable` only affects the JSON representation (see below); it has no effect if
-///   `serialize`/`deserialize` aren't enabled.
+/// - **No cause on the variant**: a direct, `#[track_caller]` constructor is generated per
+///   variant, named after it in `snake_case` -- `{Name}::{variant}(field_a, field_b, ...)` for a
+///   struct/tuple variant, `{Name}::{variant}()` for a unit variant. It's just
+///   `Self::new({Kind}::{Variant} { .. })` under the hood, so `#[track_caller]` matters here too:
+///   without it, a captured `location`/`backtrace` trace would point inside this generated
+///   function instead of at your actual call site.
+///   ```ignore
+///   ReadFile::not_found(path.to_string())
+///   ```
+/// - **Variant declares `#[cause(Type)]`** (repeatable on the same variant; `unserializable`
+///   only affects the JSON representation, see below):
+///   - If the variant is a unit variant and `Type` isn't shared with any other variant in the
+///     enum, this generates `impl From<Type> for {Name}`, so `some_io_call()?` works directly
+///     via `?`'s `.into()` -- no explicit constructor call at all.
+///     ```ignore
+///     fn read(path: &str) -> Result<String, ReadFile> {
+///         Ok(std::fs::read_to_string(path)?) // `?` converts `io::Error` via `From`
+///     }
+///     ```
+///   - Otherwise (the variant has fields, or `Type` is declared on more than one variant), a
+///     `ResultInto{Name}{Variant}<T>` trait is generated with a `map_err_{variant}` method, so
+///     you write `some_call().map_err_variant(field_a, field_b)?` instead of a hand-rolled
+///     `map_err` closure -- and unlike `map_err`, this preserves `#[track_caller]` span info
+///     through the `?`.
+///     ```ignore
+///     fn read(path: &str) -> Result<String, ReadFile> {
+///         std::fs::read_to_string(path).map_err_io(path.to_string())
+///     }
+///     ```
+///     If the variant has fields, the same trait also gets `map_err_{variant}_with`, taking a
+///     closure `FnOnce(&Cause) -> Fields` instead of the fields directly (`Cause` is whichever
+///     declared `#[cause(..)]` type actually caused the `Err`; `Fields` is the bare field type
+///     for a single-field variant, or a tuple in declaration order for more than one). The
+///     closure only runs on the `Err` path, so it's the right choice when the fields are
+///     expensive to produce (a clone, a formatted string, ...) and you don't want to pay for
+///     that on the common success path:
+///     ```ignore
+///     fn read(path: &str) -> Result<String, ReadFile> {
+///         std::fs::read_to_string(path).map_err_io_with(|_cause| path.to_string())
+///     }
+///     ```
 ///
 /// # `#[abpl_error(...)]`
 ///
@@ -133,7 +167,11 @@ mod error;
 /// }
 ///
 /// fn read(path: &str) -> Result<String, ReadFile> {
-///     std::fs::read_to_string(path).map_err_io(path.to_string())
+///     let path = path.to_string();
+///     if !std::path::Path::new(&path).exists() {
+///         return Err(ReadFile::not_found(path)); // no #[cause(..)] on `NotFound` -> direct constructor
+///     }
+///     std::fs::read_to_string(&path).map_err_io(path)
 /// }
 /// ```
 #[proc_macro_derive(Error, attributes(cause, abpl_error, abpl_provider))]

@@ -58,7 +58,7 @@ impl AbplErrorAttribute {
 			self.utoipa = true;
 			return Ok(());
 		}
-		return Err(syn::Error::new_spanned(ident, "unknown modifier"));
+		Err(syn::Error::new_spanned(ident, "unknown modifier"))
 	}
 	pub fn parse_from_single(maybe_err_attribute: &syn::Attribute) -> syn::Result<Option<Self>> {
 		if !maybe_err_attribute.meta.path().is_ident("abpl_error") {

@@ -2,6 +2,8 @@
 
 use std::sync::{LockResult, TryLockError, TryLockResult};
 
+/// A trait auto-implemted on [LockResult] that implements a method that is slightly more convenient than
+/// `.unwrap_or_else(|err| err.into_inner())`
 pub trait MithridatistLockResult<T> {
 	/// Assert that you are immune to poison.
 	fn mithridate(self) -> T;
@@ -15,6 +17,8 @@ impl<T> MithridatistLockResult<T> for LockResult<T> {
 	}
 }
 
+/// A trait auto-implemted on [TryLockResult] that implements a method that is slightly more convenient than
+/// matching against it
 pub trait MithridatistTryLockResult<T> {
 	/// Assert that you are immune to poison.
 	fn mithridate(self) -> Option<T>;

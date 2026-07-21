@@ -161,7 +161,6 @@ fn fmt_verbose_chain(
 
 #[derive(Default, Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde_with::SerializeDisplay))]
-
 pub enum ErrorTrace {
 	#[default]
 	None,
@@ -248,7 +247,6 @@ mod tests {
 		#[derive(Debug, Clone, abpl_macros::Error, ::serde::Serialize, ::serde::Deserialize, utoipa::ToSchema)]
 		#[abpl_error(location, serialize)]
 		#[abpl_provider(ProvidesExitCode(1.into(), exit_code, std::process::ExitCode))]
-
 		enum TestKind {
 			#[cause(std::io::Error, unserializable)]
 			One,
@@ -257,7 +255,14 @@ mod tests {
 			Two(u32, u32),
 			#[cause(std::num::TryFromIntError, unserializable)]
 			#[abpl_provider(exit_code(10.into()))]
-			Three { a: u64, b: u64 },
+			Three {
+				a: u64,
+				b: u64,
+			},
+			Four {
+				a: u64,
+				b: u64,
+			},
 		}
 		impl core::fmt::Display for TestKind {
 			fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -272,6 +277,13 @@ mod tests {
 					},
 					TestKind::Three { a, b } => {
 						f.write_str("the three (two) numbers are")?;
+						a.fmt(f)?;
+						f.write_str(" + ")?;
+						b.fmt(f)?;
+						Ok(())
+					},
+					TestKind::Four { a, b } => {
+						f.write_str("the four (two) numbers are")?;
 						a.fmt(f)?;
 						f.write_str(" + ")?;
 						b.fmt(f)?;
@@ -302,10 +314,11 @@ mod tests {
 		fn _test() -> Result<(), Test> {
 			let _ = std::fs::read("asdf")?;
 			let _ = u32::try_from(69u64).map_err_two(69, 420)?;
-			let _ = u32::from_str_radix("fhf", 10).map_err_two(69, 420)?;
+			let _ = "fhf".parse::<u32>().map_err_two(69, 420)?;
+
 			// let _ = u32::try_from(69u64).map_err_three(69, 420)?;
 
-			Ok(())
+			Err(Test::four(69, 420))
 		}
 	}
 
@@ -479,5 +492,51 @@ mod tests {
 		// A variant that never opted into `cause` delegation just uses the default (2).
 		let standalone = Outer::new(OuterKind::Standalone);
 		assert_eq!(standalone.exit_code(), 2.into());
+	}
+
+	#[test]
+	fn map_err_with_is_lazy_and_receives_the_cause() {
+		#[derive(Debug, Clone, abpl_macros::Error)]
+		enum WithKind {
+			#[cause(std::num::TryFromIntError)]
+			#[cause(std::num::ParseIntError)]
+			Two(u32, u32),
+			#[cause(std::num::TryFromIntError)]
+			One(u32),
+		}
+		impl core::fmt::Display for WithKind {
+			fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+				write!(f, "{self:?}")
+			}
+		}
+
+		// The closure must never run on the `Ok` path.
+		let mut invoked = false;
+		let ok: Result<u32, With> = Ok::<u32, std::num::TryFromIntError>(1u32).map_err_two_with(|_cause| {
+			invoked = true;
+			(0, 0)
+		});
+		assert!(ok.is_ok());
+		assert!(!invoked, "closure ran even though the Result was Ok");
+
+		// Multi-field variant: closure returns a tuple, and receives the actual cause.
+		let try_from_cause = u32::try_from(-1i64 as u64).unwrap_err();
+		let expected_len = try_from_cause.to_string().len() as u32;
+		let err = Err::<u32, _>(try_from_cause)
+			.map_err_two_with(|cause| (cause.to_string().len() as u32, 42))
+			.unwrap_err();
+		assert!(matches!(err.kind(), WithKind::Two(a, 42) if *a == expected_len));
+
+		// Same variant, different declared cause type -- same trait, different `Self::Cause`.
+		let parse_cause = "not a number".parse::<u32>().unwrap_err();
+		let expected_len = parse_cause.to_string().len() as u32;
+		let err = Err::<u32, _>(parse_cause)
+			.map_err_two_with(|cause: &std::num::ParseIntError| (cause.to_string().len() as u32, 7))
+			.unwrap_err();
+		assert!(matches!(err.kind(), WithKind::Two(a, 7) if *a == expected_len));
+
+		// Single-field variant: closure returns the bare value, not a 1-tuple.
+		let err = u32::try_from(-1i64 as u64).map_err_one_with(|_cause| 99).unwrap_err();
+		assert!(matches!(err.kind(), WithKind::One(99)));
 	}
 }

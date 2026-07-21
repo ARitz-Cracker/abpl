@@ -37,7 +37,7 @@ impl AbplProviderAttribute {
 							"unexpected Self type qualifier",
 						));
 					}
-					if let Some(attr) = attrs.get(0) {
+					if let Some(attr) = attrs.first() {
 						return Err(syn::Error::new_spanned(attr, "unexpected inner-attributes"));
 					}
 					path
@@ -73,7 +73,7 @@ impl AbplProviderAttribute {
 								"unexpected Self type qualifier",
 							));
 						}
-						if let Some(attr) = attrs.get(0) {
+						if let Some(attr) = attrs.first() {
 							return Err(syn::Error::new_spanned(attr, "unexpected inner-attributes"));
 						}
 						path.require_ident().cloned()
@@ -92,7 +92,7 @@ impl AbplProviderAttribute {
 								"unexpected Self type qualifier",
 							));
 						}
-						if let Some(attr) = attrs.get(0) {
+						if let Some(attr) = attrs.first() {
 							return Err(syn::Error::new_spanned(attr, "unexpected inner-attributes"));
 						}
 						Ok(path)

@@ -14,7 +14,7 @@ impl CauseAttribute {
 			self.unserializable = true;
 			return Ok(());
 		}
-		return Err(syn::Error::new_spanned(ident, "unknown modifier"));
+		Err(syn::Error::new_spanned(ident, "unknown modifier"))
 	}
 	pub fn parse_from_single(maybe_cause_attribute: &syn::Attribute) -> syn::Result<Option<Self>> {
 		if !maybe_cause_attribute.meta.path().is_ident("cause") {

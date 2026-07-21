@@ -6,11 +6,14 @@
         "utoipa",
         
         "thread",
-        "sync",
         "newtype_base64",
-        "derive_error"
+        "derive_error",
+
+        "http",
         
+        "tracing-subscriber"
     ],
+    "rust-analyzer.check.command": "clippy",
     "nixEnvSelector.nixFile": "${workspaceFolder}/shell.nix",
     "nixEnvSelector.useFlakes": false
 }

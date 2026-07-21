@@ -8,14 +8,14 @@ use core::{
 use base64::{Engine as _, display::Base64Display, engine::GeneralPurpose as Base64Engine};
 use bytes::{Bytes, BytesMut};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
-pub const BASE64_STANDARD_WHATEVER_PAD: Base64Engine = (&Base64Engine::new)(
+pub const BASE64_STANDARD_WHATEVER_PAD: Base64Engine = Base64Engine::new(
 	&base64::alphabet::STANDARD,
 	base64::engine::general_purpose::GeneralPurposeConfig::new()
 		.with_encode_padding(false)
 		.with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent),
 );
 
-pub const BASE64_URL_WHATEVER_PAD: Base64Engine = (&Base64Engine::new)(
+pub const BASE64_URL_WHATEVER_PAD: Base64Engine = Base64Engine::new(
 	&base64::alphabet::URL_SAFE,
 	base64::engine::general_purpose::GeneralPurposeConfig::new()
 		.with_encode_padding(false)

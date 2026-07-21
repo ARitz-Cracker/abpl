@@ -138,8 +138,49 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 	});
 
 	for variant_detail in enum_variant_details.iter() {
-		// Quick means for us to lazily define the trait and fn signature
-		let mut result_trait_ident_and_fn: Option<(syn::Ident, syn::Signature)> = None;
+		// Quick means for us to lazily define the trait and fn signature. The third element is
+		// the signature of the lazy `map_err_*_with` counterpart, present only when the variant
+		// actually has fields to defer constructing (see below).
+		let mut result_trait_ident_and_fn: Option<(syn::Ident, syn::Signature, Option<syn::Signature>)> = None;
+
+		// Convenience direct constructor for variants with no `#[cause(..)]` at all, since those
+		// otherwise have no shorthand besides `Test::new(TestKind::Variant { .. })`. Variants
+		// that do declare causes already get `From`/`map_err_*` (below), which cover the same
+		// need more specifically (with a cause attached).
+		if variant_detail.causes.is_empty() {
+			let variant_ident = &variant_detail.ident;
+			let constructor_ident = syn::Ident::new(
+				&variant_detail.ident.to_string().to_case(convert_case::Case::Snake),
+				variant_detail.ident.span(),
+			);
+
+			let mut constructor_params: syn::punctuated::Punctuated<syn::FnArg, Token![,]> = Default::default();
+			let mut field_idents: syn::punctuated::Punctuated<syn::Ident, Token![,]> = Default::default();
+			for (i, enum_field) in variant_detail.fields.iter().enumerate() {
+				let field_ty = &enum_field.ty;
+				let field_ident = if let Some(ident) = &enum_field.ident {
+					ident.clone()
+				} else {
+					syn::Ident::new(&format!("arg_{i}"), Span::call_site())
+				};
+				constructor_params.push(syn::parse_quote! { #field_ident: #field_ty });
+				field_idents.push(field_ident);
+			}
+			let construction = match variant_detail.fields {
+				syn::Fields::Unit => quote! { #input_ident::#variant_ident },
+				syn::Fields::Named(_) => quote! { #input_ident::#variant_ident { #field_idents } },
+				syn::Fields::Unnamed(_) => quote! { #input_ident::#variant_ident ( #field_idents ) },
+			};
+
+			exported_body.append_all(quote! {
+				impl #generated_struct_ident {
+					#[track_caller]
+					pub fn #constructor_ident(#constructor_params) -> Self {
+						Self::new(#construction)
+					}
+				}
+			});
+		}
 
 		// Generating `From` blocks and traits for the `Result` types for more conveneint map_err_*
 		for cause_attr in variant_detail.causes.iter() {
@@ -163,49 +204,91 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 					}
 				});
 			} else {
-				let (result_trait_ident, result_trait_fn) = &*result_trait_ident_and_fn.get_or_insert_with(|| {
-					let result_trait_name = format!("ResultInto{struct_name_str}{}", variant_detail.ident);
-					let result_trait_ident = syn::Ident::new(&result_trait_name, Span::call_site());
+				let (result_trait_ident, result_trait_fn, with_trait_fn) = &*result_trait_ident_and_fn
+					.get_or_insert_with(|| {
+						let result_trait_name = format!("ResultInto{struct_name_str}{}", variant_detail.ident);
+						let result_trait_ident = syn::Ident::new(&result_trait_name, Span::call_site());
 
-					let function_name = format!(
-						"map_err_{}",
-						variant_detail.ident.to_string().to_case(convert_case::Case::Snake)
-					);
+						let function_name = format!(
+							"map_err_{}",
+							variant_detail.ident.to_string().to_case(convert_case::Case::Snake)
+						);
 
-					let mut result_trait_func_params: syn::punctuated::Punctuated<syn::FnArg, Token![,]> =
-						Default::default();
-					result_trait_func_params.push(syn::parse_quote!(self)); // Consumes self
+						let mut result_trait_func_params: syn::punctuated::Punctuated<syn::FnArg, Token![,]> =
+							Default::default();
+						result_trait_func_params.push(syn::parse_quote!(self)); // Consumes self
 
-					for (i, enum_field) in variant_detail.fields.iter().enumerate() {
-						let func_param_type = &enum_field.ty;
-						let func_param_ident = if let Some(ident) = &enum_field.ident {
-							ident
-						} else {
-							// enum payload is tuple-like, so we'll have to generate argument names
-							&syn::Ident::new(&format!("arg_{i}"), Span::call_site())
-						};
-						result_trait_func_params.push(syn::parse_quote! { #func_param_ident: #func_param_type });
-					}
-					let result_trait_func_sig = syn::Signature {
-						constness: None,
-						asyncness: None,
-						unsafety: None,
-						abi: None,
-						fn_token: Default::default(),
-						ident: syn::Ident::new(&function_name, variant_detail.ident.span()),
-						generics: Default::default(),
-						paren_token: Default::default(),
-						inputs: result_trait_func_params,
-						variadic: Default::default(),
-						output: syn::parse_quote! { -> Result<T, #generated_struct_ident> },
-					};
-					exported_body.append_all(quote! {
-						pub trait #result_trait_ident<T> {
-							#result_trait_func_sig;
+						for (i, enum_field) in variant_detail.fields.iter().enumerate() {
+							let func_param_type = &enum_field.ty;
+							let func_param_ident = if let Some(ident) = &enum_field.ident {
+								ident
+							} else {
+								// enum payload is tuple-like, so we'll have to generate argument names
+								&syn::Ident::new(&format!("arg_{i}"), Span::call_site())
+							};
+							result_trait_func_params.push(syn::parse_quote! { #func_param_ident: #func_param_type });
 						}
+						let result_trait_func_sig = syn::Signature {
+							constness: None,
+							asyncness: None,
+							unsafety: None,
+							abi: None,
+							fn_token: Default::default(),
+							ident: syn::Ident::new(&function_name, variant_detail.ident.span()),
+							generics: Default::default(),
+							paren_token: Default::default(),
+							inputs: result_trait_func_params,
+							variadic: Default::default(),
+							output: syn::parse_quote! { -> Result<T, #generated_struct_ident> },
+						};
+
+						// Lazy counterpart: only worth generating when there's something to actually
+						// defer constructing. `Self::Cause` (declared below) lets a single shared
+						// trait method signature work across every `#[cause(..)]` type this variant
+						// declares, since each gets its own `impl` with its own concrete `Cause`.
+						let with_trait_fn = (!matches!(variant_detail.fields, syn::Fields::Unit)).then(|| {
+							let with_function_name = format!("{function_name}_with");
+							let field_types: Vec<&syn::Type> =
+								variant_detail.fields.iter().map(|field| &field.ty).collect();
+							let closure_output = if let [single] = field_types[..] {
+								quote! { #single }
+							} else {
+								quote! { (#(#field_types),*) }
+							};
+							let mut with_trait_func_params: syn::punctuated::Punctuated<syn::FnArg, Token![,]> =
+								Default::default();
+							with_trait_func_params.push(syn::parse_quote!(self));
+							with_trait_func_params.push(syn::parse_quote! {
+								make_fields: impl ::core::ops::FnOnce(&Self::Cause) -> #closure_output
+							});
+							syn::Signature {
+								constness: None,
+								asyncness: None,
+								unsafety: None,
+								abi: None,
+								fn_token: Default::default(),
+								ident: syn::Ident::new(&with_function_name, variant_detail.ident.span()),
+								generics: Default::default(),
+								paren_token: Default::default(),
+								inputs: with_trait_func_params,
+								variadic: Default::default(),
+								output: syn::parse_quote! { -> Result<T, #generated_struct_ident> },
+							}
+						});
+						let with_trait_fn_decl = with_trait_fn.as_ref().map(|sig| quote! { #sig; });
+
+						exported_body.append_all(quote! {
+							pub trait #result_trait_ident<T> {
+								/// The concrete `#[cause(..)]` type this particular impl handles -- lets
+								/// `map_err_*_with`'s closure borrow the cause without every `#[cause(..)]`
+								/// type on this variant needing to share one signature.
+								type Cause;
+								#result_trait_func_sig;
+								#with_trait_fn_decl
+							}
+						});
+						(result_trait_ident, result_trait_func_sig, with_trait_fn)
 					});
-					(result_trait_ident, result_trait_func_sig)
-				});
 				let cause_ident_path = &cause_attr.cause;
 				let variant_ident = &variant_detail.ident;
 
@@ -231,8 +314,31 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 					},
 					syn::Fields::Unnamed(_) => quote! {(#new_enum_fields)},
 				};
+
+				let with_impl = with_trait_fn.as_ref().map(|with_trait_fn| {
+					let destructure_pattern = if new_enum_fields.len() == 1 {
+						quote! { #new_enum_fields }
+					} else {
+						quote! { (#new_enum_fields) }
+					};
+					quote! {
+						#[track_caller]
+						#with_trait_fn {
+							// Can't use map_err because of #[track_caller]
+							match self {
+								Ok(inner) => Ok(inner),
+								Err(input) => {
+									let #destructure_pattern = make_fields(&input);
+									Err(#generated_struct_ident::new_with_cause(#input_ident::#variant_ident #enum_fields_with_paren, Some(input)))
+								},
+							}
+						}
+					}
+				});
+
 				exported_body.append_all(quote! {
 					impl<T> #result_trait_ident<T> for Result<T, #cause_ident_path> {
+						type Cause = #cause_ident_path;
 						#[track_caller]
 						#result_trait_fn {
 							// Can't use map_err because of #[track_caller]
@@ -241,6 +347,7 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 								Err(input) => Err(#generated_struct_ident::new_with_cause(#input_ident::#variant_ident #enum_fields_with_paren, Some(input))),
 							}
 						}
+						#with_impl
 					}
 				});
 			}
@@ -274,8 +381,8 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 
 			let Some(provider_trait_match_body) = provider_trait_match_body.get_mut(trait_name) else {
 				return Err(syn::Error::new_spanned(
-					&trait_name,
-					format!("trait must match one of the ones defiend on the top-level abpl_provider attribute"),
+					trait_name,
+					"trait must match one of the ones defiend on the top-level abpl_provider attribute".to_string(),
 				));
 			};
 			if !seen_paths.insert(trait_name.clone()) {
@@ -355,12 +462,11 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 
 		let default_return_value = &provider_attr.return_value;
 
-		let provider_trait_match_body = provider_trait_match_body
-			.remove(&trait_name)
-			.unwrap_or_else(|| TokenStream::new());
+		let provider_trait_match_body = provider_trait_match_body.remove(trait_name).unwrap_or_default();
 
 		sealed_body.append_all(quote! {
 			impl #trait_name for #generated_struct_ident {
+				#[allow(unused_variables)]
 				fn #fn_name(&self) -> #fn_return_type {
 					match self.kind() {
 						#provider_trait_match_body

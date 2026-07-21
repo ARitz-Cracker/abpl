@@ -8,7 +8,7 @@ pub mod error;
 #[cfg(all(feature = "app", feature = "std"))]
 pub mod app;
 pub mod providers;
-#[cfg(feature = "sync")]
+#[cfg(feature = "std")]
 pub mod sync;
 #[cfg(feature = "thread")]
 pub mod thread;
@@ -20,3 +20,6 @@ pub mod maybe_std;
 pub mod deps {
 	pub use indenter;
 }
+
+#[cfg(feature = "future_util")]
+pub mod future;
