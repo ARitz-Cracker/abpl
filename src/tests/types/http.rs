@@ -64,7 +64,7 @@ fn serde_round_trips_through_display_and_from_str() {
 	assert_eq!(round_tripped, addr);
 }
 
-#[cfg(feature = "app")]
+#[cfg(all(feature = "app", feature = "std"))]
 #[test]
 fn socket_addr_parse_error_provides_exit_code() {
 	use crate::providers::ProvidesExitCode;

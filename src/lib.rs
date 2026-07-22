@@ -11,6 +11,27 @@
 //!   tokio runtime anyway
 //! - Various newtypes
 //! - And more!
+//!
+//! # Cargo features
+//! Almost everything here is opt-in -- enable only what you need.
+//!
+//! - `std` (**default**): the standard library. `#![no_std]` support is aspirational, not
+//!   functional -- disabling this today does not currently build (a few spots reach for
+//!   `alloc`-provided items like `String`/`Box`/`format!` without actually importing them from
+//!   `alloc`). Treat `std` as required until this note goes away.
+//! - `serde`: `Serialize`/`Deserialize` for the error macro's generated types and other newtypes.
+//! - `utoipa`: [utoipa::ToSchema] for the same types, for OpenAPI schema generation.
+//! - `derive_error`: the [abpl::Error] derive macro itself, plus its `Display`/serde support.
+//! - `app`: [abpl::app] -- the reloadable-systemd-service lifecycle helper (config parsing,
+//!   logging setup, signal handling).
+//! - `http`: axum/tokio integration -- [abpl::app::axum::HotReloadingAxumService] and the
+//!   [abpl::types::http] socket abstractions. Implies `future_util`.
+//! - `future_util`: [abpl::future::block_on]/[abpl::future::block_on_mt], the tokio-runtime
+//!   bridging helpers.
+//! - `thread`: [abpl::thread] -- currently just a cancelable sleep.
+//! - `newtype_base64`: base64-encoded byte-array newtypes. Implies `serde`.
+//! - `test`: bundles every feature the test suite needs. Not meant for downstream use --
+//!   run tests with `--features test` rather than enabling it as a dependency feature.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 extern crate self as abpl; // Makes the abpl_macros work internally.

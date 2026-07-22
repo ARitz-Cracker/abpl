@@ -41,7 +41,7 @@ impl Display for SocketAddrParseError {
 	}
 }
 impl Error for SocketAddrParseError {}
-#[cfg(feature = "app")]
+#[cfg(all(feature = "app", feature = "std"))]
 impl ProvidesExitCode for SocketAddrParseError {
 	fn exit_code(&self) -> std::process::ExitCode {
 		crate::app::consts::EX_CONFIG.into()

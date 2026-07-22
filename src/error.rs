@@ -201,6 +201,7 @@ impl Display for ErrorTrace {
 				f.write_str("\n")?;
 				Ok(())
 			},
+			#[cfg(feature = "std")]
 			ErrorTrace::Backtrace(backtrace) => {
 				// backtrace ends with a newline
 				backtrace.fmt(f)
