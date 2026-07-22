@@ -33,7 +33,7 @@ impl<S: Send + Sync + 'static> HotReloadingAxumService<S> {
 	/// Note that the `router` should not have been called with `.with_state` yet. That's the job of this struct.
 	///
 	/// It's important to know that the axum instance(s) run in their dedicated tokio runtime, if you make external
-	/// requests, be mindful of https://github.com/tokio-rs/tokio/issues/7337
+	/// requests, be mindful of <https://github.com/tokio-rs/tokio/issues/7337>
 	pub fn new(state: S, router: impl Fn(HotswapState<S>) -> Router<HotswapState<S>>) -> Self {
 		let parent_state = HotswapState::new(state);
 		let router = router(parent_state.clone_as_parent()).with_state(parent_state.clone_as_parent());

@@ -72,7 +72,7 @@ pub fn runtime_handle() -> tokio::runtime::Handle {
 /// Like `futures::executor::block_on` but ensures that there is a tokio runtime on the current thread. The purpose of
 /// this is to flatten async calls to sync calls where appropriate. This also works with nested `block_on` calls, but
 /// requires the future to implement Send, as it will pass to future to a new thread if the current executor is
-/// currently blocked. Also, be mindful of https://github.com/tokio-rs/tokio/issues/7337 when using this function.
+/// currently blocked. Also, be mindful of <https://github.com/tokio-rs/tokio/issues/7337> when using this function.
 pub fn block_on_mt<F>(f: F) -> F::Output
 where
 	F: Future + Send,

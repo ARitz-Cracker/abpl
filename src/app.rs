@@ -113,7 +113,7 @@ pub trait ReloadableService: Sized {
 ///
 /// This piece of magic:
 /// - Assumes the first cli argument is a path to [toml] file containing your [ReloadableService::Config].
-/// - Sets up [tracing] for you, using [tracing_journald] if available, [tracing_subscriber::fmt] if not.
+/// - Sets up [tracing] for you, using [tracing_journald] if available, [mod@tracing_subscriber::fmt] if not.
 /// - If this service started via systemd, then it will assume a
 ///   [service type](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html#Type=) of
 ///   `notify-reload`; Informing systemd when the service has finished starting and reloading.
