@@ -65,7 +65,7 @@ pub trait ReloadableService: Sized {
 	///
 	/// This usually invoked a SIGHUP happens while not running in a TTY, which is usually happens when
 	/// `systemctl reload your-service.service`
-	fn reload(&mut self, config: Self::Config) -> Result<Self, Self::Error>;
+	fn reload(&mut self, config: Self::Config) -> Result<(), Self::Error>;
 
 	/// Called when the process received SIGUSR1.
 	fn sigusr1(&mut self) {}
