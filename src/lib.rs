@@ -33,6 +33,7 @@
 //! - `test`: bundles every feature the test suite needs. Not meant for downstream use --
 //!   run tests with `--features test` rather than enabling it as a dependency feature.
 
+#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 extern crate self as abpl; // Makes the abpl_macros work internally.
 
