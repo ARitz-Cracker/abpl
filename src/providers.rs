@@ -121,31 +121,6 @@ impl ProvidesHttpStatus for std::io::Error {
 	}
 }
 
-#[cfg(all(test, feature = "http", feature = "std"))]
-mod tests {
-	use super::ProvidesHttpStatus;
-
-	#[test]
-	fn io_error_http_status() {
-		assert_eq!(
-			std::io::Error::from(std::io::ErrorKind::NotFound).http_status(),
-			http::StatusCode::NOT_FOUND
-		);
-		assert_eq!(
-			std::io::Error::from(std::io::ErrorKind::TimedOut).http_status(),
-			http::StatusCode::SERVICE_UNAVAILABLE
-		);
-		assert_eq!(
-			std::io::Error::from(std::io::ErrorKind::StorageFull).http_status(),
-			http::StatusCode::INSUFFICIENT_STORAGE
-		);
-		assert_eq!(
-			std::io::Error::from(std::io::ErrorKind::Unsupported).http_status(),
-			http::StatusCode::NOT_IMPLEMENTED
-		);
-		assert_eq!(
-			std::io::Error::from(std::io::ErrorKind::OutOfMemory).http_status(),
-			http::StatusCode::INTERNAL_SERVER_ERROR
-		);
-	}
-}
+#[cfg(test)]
+#[path = "tests/providers.rs"]
+mod tests;

@@ -211,3 +211,7 @@ impl ProvidesExitCode for HotReloadAxumError {
 		crate::app::consts::EX_CONFIG.into()
 	}
 }
+
+#[cfg(test)]
+#[path = "../tests/app/axum.rs"]
+mod tests;

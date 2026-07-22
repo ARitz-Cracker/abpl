@@ -109,3 +109,7 @@ impl<T: Send + Sync + 'static> axum::extract::FromRef<HotswapState<T>> for Arc<T
 		input.clone_as_child().into_inner()
 	}
 }
+
+#[cfg(test)]
+#[path = "../tests/types/hotswap_state.rs"]
+mod tests;

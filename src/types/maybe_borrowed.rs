@@ -53,3 +53,7 @@ impl<'a, T: utoipa::ToSchema + utoipa::__dev::ComposeSchema> utoipa::ToSchema fo
 		T::name()
 	}
 }
+
+#[cfg(test)]
+#[path = "../tests/types/maybe_borrowed.rs"]
+mod tests;

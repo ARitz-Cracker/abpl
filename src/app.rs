@@ -105,7 +105,7 @@ pub trait ReloadableService: Sized {
 */
 
 /// Allows you to write the following
-/// ```
+/// ```ignore
 /// pub fn main() -> MainResult<YourError> {
 ///     abpl::app::service_main::<YourService>().into()
 /// }
@@ -252,3 +252,7 @@ pub fn service_main<T: ReloadableService>() -> Result<(), T::Error> {
 	tracing::info!("service stopped");
 	Ok(())
 }
+
+#[cfg(test)]
+#[path = "tests/app.rs"]
+mod tests;

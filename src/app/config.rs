@@ -65,3 +65,7 @@ pub fn parse_external_toml_file<'de, D: Deserializer<'de>, T: DeserializeOwned>(
 		MaybeT::T(inner) => Ok(inner),
 	}
 }
+
+#[cfg(test)]
+#[path = "../tests/app/config.rs"]
+mod tests;

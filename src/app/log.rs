@@ -72,3 +72,7 @@ pub fn setup_local_logging(initial_filter: EnvFilter, try_journald: bool) -> Rel
 	}
 	ReloadableLocalLogHandle::Fmt(handle)
 }
+
+#[cfg(test)]
+#[path = "../tests/app/log.rs"]
+mod tests;

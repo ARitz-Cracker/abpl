@@ -94,3 +94,7 @@ where
 		block_on_with_thread(f)
 	}
 }
+
+#[cfg(test)]
+#[path = "tests/future.rs"]
+mod tests;

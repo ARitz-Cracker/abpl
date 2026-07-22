@@ -32,3 +32,7 @@ impl<T> MithridatistTryLockResult<T> for TryLockResult<T> {
 		}
 	}
 }
+
+#[cfg(test)]
+#[path = "tests/sync.rs"]
+mod tests;

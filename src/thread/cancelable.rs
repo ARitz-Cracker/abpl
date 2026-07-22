@@ -55,38 +55,5 @@ pub fn cancelable_sleep() -> (SleeperHandle, Sleeper) {
 }
 
 #[cfg(test)]
-mod tests {
-	use std::{
-		sync::mpsc::sync_channel,
-		time::{Duration, Instant},
-	};
-
-	#[test]
-	pub fn primitive_sanity_check() {
-		// This is just to confirm that `sync_channel(0)`  won't block if it's actively another thread is actively
-		// waiting/listening.
-		let (tx, rx) = sync_channel::<()>(0);
-		std::thread::spawn(move || tx.send(()));
-		std::thread::sleep(Duration::from_secs(1));
-		assert_eq!(rx.try_recv(), Ok(()));
-
-		let (tx, rx) = sync_channel::<()>(0);
-		std::thread::spawn(move || {
-			let _ = rx.recv();
-		});
-		std::thread::sleep(Duration::from_secs(1));
-		assert_eq!(tx.try_send(()), Ok(()));
-	}
-
-	#[test]
-	fn cancel_wakes_sleep() {
-		let (handle, sleeper) = super::cancelable_sleep();
-		std::thread::spawn(move || {
-			std::thread::sleep(Duration::from_millis(50));
-			handle.cancel();
-		});
-		let start = Instant::now();
-		sleeper.sleep(Duration::from_secs(10));
-		assert!(start.elapsed() < Duration::from_secs(1));
-	}
-}
+#[path = "../tests/thread/cancelable.rs"]
+mod tests;

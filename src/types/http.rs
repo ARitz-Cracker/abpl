@@ -247,3 +247,7 @@ impl Listener for SocketListener {
 		}
 	}
 }
+
+#[cfg(test)]
+#[path = "../tests/types/http.rs"]
+mod tests;

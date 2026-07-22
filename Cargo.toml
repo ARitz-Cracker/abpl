@@ -58,6 +58,7 @@ test = ["derive_error", "serde", "app", "utoipa", "thread", "http"]
 
 [dev-dependencies]
 serde_json = { version = "1.0.150" }
+tempfile = { version = "3.23.0" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # TODO: Create a stub dependency that does nothing on non-linux platforms so that the feature list still works.
