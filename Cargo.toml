@@ -38,8 +38,8 @@ url = {version = "2.5.8", optional = true}
 # A newtype for byte arrays to be (de)serialized as base64
 newtype_base64 = ["serde", "bytes", "base64"]
 serde = ["dep:serde", "serde/derive", "serde/rc", "dep:serde_with"]
-http = ["future_util", "dep:http", "dep:tokio", "tokio/net", "dep:axum", "dep:tower-service", "axum/tokio", "axum/http1", "axum/http2", "dep:futures", "futures/alloc"]
-future_util = ["dep:tokio", "dep:futures"]
+http = ["future_util", "serde", "dep:http", "dep:tokio", "tokio/net", "dep:axum", "dep:tower-service", "axum/tokio", "axum/http1", "axum/http2", "dep:futures", "futures/alloc"]
+future_util = ["dep:tokio", "tokio/rt", "dep:futures"]
 
 # Derive error serde stuff
 derive_error = ["abpl-macros", "indenter"]
@@ -50,14 +50,10 @@ default = ["std"]
 std = []
 
 # automagic app lifecycle management
-app = ["toml", "toml/serde", "toml/parse", "tracing-subscriber", "tracing-subscriber/env-filter", "tracing-subscriber/fmt", "tracing-journald", "libc", "signal-hook", "sd-notify", "url"]
+app = ["derive_error", "serde", "toml", "toml/serde", "toml/parse", "tracing-subscriber", "tracing-subscriber/env-filter", "tracing-subscriber/fmt", "tracing-journald", "libc", "signal-hook", "sd-notify", "url"]
 
 # Thread utilities, currently includes a cancelable sleep
 thread = [ ]
-
-# Enables every feature currently exercised by the test suite. Not meant for use outside
-# `cargo test`/`cargo check --tests` -- run those with `--features test`.
-test = ["derive_error", "serde", "app", "utoipa", "thread", "http"]
 
 [package.metadata.docs.rs]
 all-features = true

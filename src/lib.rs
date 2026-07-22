@@ -30,8 +30,9 @@
 //!   bridging helpers.
 //! - `thread`: [abpl::thread] -- currently just a cancelable sleep.
 //! - `newtype_base64`: base64-encoded byte-array newtypes. Implies `serde`.
-//! - `test`: bundles every feature the test suite needs. Not meant for downstream use --
-//!   run tests with `--features test` rather than enabling it as a dependency feature.
+//!
+//! Run the test suite with `--all-features` rather than enabling individual features --
+//! that's what the test suite is written against.
 
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]

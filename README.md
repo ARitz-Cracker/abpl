@@ -10,7 +10,7 @@ Almost everything beyond `std` is opt-in behind Cargo features -- see the crate-
 full list and what each one unlocks:
 
 ```
-cargo doc --features test --open
+cargo doc --all-features --open
 ```
 
 ## Development
@@ -26,13 +26,13 @@ which provides the Rust toolchain, rust-analyzer, clippy, and cargo-llvm-cov.
 Run the test suite with:
 
 ```
-cargo test --features test
+cargo test --all-features
 ```
 
 and check coverage with:
 
 ```
-cargo llvm-cov --features test --html
+cargo llvm-cov --all-features --html
 ```
 
 ## License
