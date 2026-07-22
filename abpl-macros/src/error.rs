@@ -231,7 +231,7 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 						let result_trait_func_sig = syn::Signature {
 							constness: None,
 							asyncness: None,
-							unsafety: None,
+							safety: Default::default(),
 							abi: None,
 							fn_token: Default::default(),
 							ident: syn::Ident::new(&function_name, variant_detail.ident.span()),
@@ -264,7 +264,7 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 							syn::Signature {
 								constness: None,
 								asyncness: None,
-								unsafety: None,
+								safety: Default::default(),
 								abi: None,
 								fn_token: Default::default(),
 								ident: syn::Ident::new(&with_function_name, variant_detail.ident.span()),

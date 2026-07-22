@@ -1,6 +1,6 @@
 extern crate alloc; // so nostd works
 use core::{
-	fmt::{Display, Formatter, Result as FmtResult, Write as _},
+	fmt::{Display, Formatter, Result as FmtResult},
 	panic::Location,
 };
 
@@ -118,6 +118,7 @@ fn fmt_verbose_chain(
 	max_depth: usize,
 	reverse: bool,
 ) -> FmtResult {
+	use core::fmt::Write as _;
 	// Trimmed because a hop's own `Display` (notably `ErrorTrace`'s) may end with its own
 	// trailing newline; we want full control over the blank line before each `∵`/`∴` marker
 	// rather than double up with whatever the hop already terminated itself with.
