@@ -88,7 +88,9 @@ fn external_toml_file_reports_a_missing_referenced_file() {
 	let document = format!("secrets = {:?}\n", missing.display().to_string());
 	let err = toml::from_str::<Wrapper>(&document).unwrap_err();
 	// The io error's own message (path + reason) surfaces directly in the custom serde error.
-	assert!(err.to_string().contains(&missing.display().to_string()) || err.to_string().to_lowercase().contains("os error"));
+	assert!(
+		err.to_string().contains(&missing.display().to_string()) || err.to_string().to_lowercase().contains("os error")
+	);
 }
 
 #[test]

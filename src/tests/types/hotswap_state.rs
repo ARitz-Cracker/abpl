@@ -15,7 +15,9 @@ fn replace_parent_state_returns_old_value_and_child_sees_new_value() {
 	let child_before = parent.clone_as_child();
 	assert_eq!(*child_before.as_inner_ref(), 1);
 
-	let old = parent.replace_parent_state(2).expect("parent should return the old state");
+	let old = parent
+		.replace_parent_state(2)
+		.expect("parent should return the old state");
 	assert_eq!(*old, 1);
 
 	// A pre-existing child is unaffected by the swap (it holds its own `Arc` snapshot).

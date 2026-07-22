@@ -26,7 +26,10 @@ fn runtime_handle_outside_a_tokio_runtime_returns_a_usable_handle() {
 
 #[test]
 fn runtime_handle_inside_a_tokio_runtime_returns_the_ambient_handle() {
-	let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+	let rt = tokio::runtime::Builder::new_current_thread()
+		.enable_all()
+		.build()
+		.unwrap();
 	rt.block_on(async {
 		// If `runtime_handle()` mistakenly built/returned the separate `REUSABLE_RT` instead of
 		// the ambient ("current") ones, this would hang: `REUSABLE_RT` is a current-thread
@@ -49,7 +52,10 @@ fn block_on_inside_a_spawn_blocking_thread_is_allowed() {
 	// `spawn_blocking` always uses a dedicated blocking thread pool regardless of the async
 	// flavor, so a current-thread runtime is enough here (the `rt-multi-thread` tokio feature
 	// isn't enabled for this crate).
-	let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+	let rt = tokio::runtime::Builder::new_current_thread()
+		.enable_all()
+		.build()
+		.unwrap();
 	rt.block_on(async {
 		tokio::task::spawn_blocking(|| {
 			// We're on a dedicated blocking-pool thread here, which tokio permits nested
@@ -65,7 +71,10 @@ fn block_on_inside_a_spawn_blocking_thread_is_allowed() {
 #[test]
 #[should_panic(expected = "gone too deep")]
 fn block_on_inside_a_plain_async_task_panics() {
-	let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+	let rt = tokio::runtime::Builder::new_current_thread()
+		.enable_all()
+		.build()
+		.unwrap();
 	rt.block_on(async {
 		// Directly inside an async task on a runtime's own worker thread (not a spawn_blocking
 		// thread), nested `block_on` is exactly the case tokio itself refuses -- our probe
@@ -88,7 +97,10 @@ fn block_on_mt_inside_a_spawn_blocking_thread_uses_the_ambient_runtime() {
 	// `spawn_blocking` always uses a dedicated blocking thread pool regardless of the async
 	// flavor, so a current-thread runtime is enough here (the `rt-multi-thread` tokio feature
 	// isn't enabled for this crate).
-	let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+	let rt = tokio::runtime::Builder::new_current_thread()
+		.enable_all()
+		.build()
+		.unwrap();
 	rt.block_on(async {
 		tokio::task::spawn_blocking(|| {
 			assert_eq!(super::block_on_mt(async { 1 + 1 }), 2);
@@ -103,7 +115,10 @@ fn block_on_mt_inside_a_plain_async_task_falls_back_to_a_dedicated_thread() {
 	// Unlike plain `block_on`, this must *not* panic: `block_on_mt` is explicitly the "even
 	// works when nested" variant, at the cost of spawning a whole new OS thread + runtime for
 	// the duration of the call.
-	let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+	let rt = tokio::runtime::Builder::new_current_thread()
+		.enable_all()
+		.build()
+		.unwrap();
 	rt.block_on(async {
 		assert_eq!(super::block_on_mt(async { 1 + 1 }), 2);
 	});

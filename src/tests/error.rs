@@ -222,7 +222,9 @@ fn display_format_modifiers() {
 	// `{:-#}` / `{:+#}`: verbose chain, forward and reverse -- each hop renders its own verbose
 	// block, separated by the `∵`/`∴` marker, with continuation lines indented.
 	let verbose_forward = format!("{publish:-#}");
-	let auth_pos = verbose_forward.find("∵ error: auth error").expect("forward chain should reach auth");
+	let auth_pos = verbose_forward
+		.find("∵ error: auth error")
+		.expect("forward chain should reach auth");
 	let token_pos = verbose_forward
 		.find("∵ error: token expired")
 		.expect("forward chain should reach token");

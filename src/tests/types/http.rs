@@ -6,7 +6,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use super::{SocketAddr, SocketAddrParseError, SocketListener};
 
 fn rt() -> tokio::runtime::Runtime {
-	tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap()
+	tokio::runtime::Builder::new_current_thread()
+		.enable_all()
+		.build()
+		.unwrap()
 }
 
 #[test]
@@ -28,7 +31,10 @@ fn parse_unix_socket_addr() {
 fn parse_invalid_returns_error() {
 	let err = SocketAddr::from_str("not a valid socket address").unwrap_err();
 	assert_eq!(err, SocketAddrParseError {});
-	assert_eq!(err.to_string(), "string was not a valid unix socket nor a valid ip socket");
+	assert_eq!(
+		err.to_string(),
+		"string was not a valid unix socket nor a valid ip socket"
+	);
 }
 
 #[test]
@@ -80,9 +86,7 @@ fn tcp_listener_binds_accepts_and_round_trips_bytes() {
 		let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
 		let mut listener = SocketListener::bind(addr).await.unwrap();
 		let bound = Listener::local_addr(&listener).unwrap();
-		let SocketAddr::Ip(bound_ip) = bound else {
-			panic!("a TCP bind should resolve to an `Ip` addr")
-		};
+		let SocketAddr::Ip(bound_ip) = bound else { panic!("a TCP bind should resolve to an `Ip` addr") };
 
 		let client_task = tokio::spawn(async move {
 			let mut stream = tokio::net::TcpStream::connect(bound_ip).await.unwrap();
