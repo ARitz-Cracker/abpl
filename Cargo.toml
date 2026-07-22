@@ -5,6 +5,7 @@ members = [".", "abpl-macros"]
 name = "abpl"
 version = "0.1.1"
 edition = "2024"
+rust-version = "1.95"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/ARitz-Cracker/abpl"
 description = "A collection of Rust boilerplate: a reloadable-systemd-service lifecycle helper, a hot-reloading axum wrapper, a serializable/typed error derive macro, and small utility newtypes."

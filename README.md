@@ -13,6 +13,11 @@ full list and what each one unlocks:
 cargo doc --all-features --open
 ```
 
+## MSRV
+
+The minimum supported Rust version is currently 1.95, matching the version of `rustc` which ships with NixOS 26.05.
+This may increase as NixOS-stable updates.
+
 ## Development
 
 This project uses Nix for its dev environment:
