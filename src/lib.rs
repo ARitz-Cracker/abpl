@@ -34,7 +34,7 @@
 //! Run the test suite with `--all-features` rather than enabling individual features --
 //! that's what the test suite is written against.
 
-#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 extern crate self as abpl; // Makes the abpl_macros work internally.
 
