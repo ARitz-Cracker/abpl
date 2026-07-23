@@ -11,6 +11,16 @@ use crate::attributes::{
 	cause::CauseAttribute,
 };
 
+/// Whether `expr` is exactly the macro call `unreachable!()`, with no message and no arguments.
+///
+/// Used as a sentinel: writing this (rather than some other fallback expression) as a provider
+/// trait's top-level default is a promise that every variant supplies its own
+/// `#[abpl_provider(..)]` for it, which we can actually check at macro-expansion time instead of
+/// letting the promise go unenforced until something panics at runtime.
+fn is_bare_unreachable_macro(expr: &syn::Expr) -> bool {
+	matches!(expr, syn::Expr::Macro(syn::ExprMacro { mac, .. }) if mac.path.is_ident("unreachable") && mac.tokens.is_empty())
+}
+
 pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 	let top_level_error_attr = AbplErrorAttribute::parse_from_slice(&input.attrs)?.unwrap_or_default();
 	let top_level_provider_attr = AbplProviderAttribute::parse_from_slice(&input.attrs)?;
@@ -21,6 +31,9 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 	// to the trait's own method name and default, without waiting for the final assembly loop.
 	let mut provider_trait_fn_name = HashMap::<syn::Path, syn::Ident>::new();
 	let mut provider_trait_default_return_value = HashMap::<syn::Path, syn::Expr>::new();
+	// Which variants gave this trait its own `#[abpl_provider(..)]`, so we can tell -- once we
+	// know every variant that exists -- whether an `unreachable!()` default is actually earned.
+	let mut provider_trait_covered_variants = HashMap::<syn::Path, HashSet<syn::Ident>>::new();
 
 	for item in top_level_provider_attr.items.iter() {
 		let Some(fn_name) = item.fn_name.clone() else {
@@ -33,6 +46,7 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 		provider_trait_match_body.insert(item.trait_or_fn_name.clone(), TokenStream::new());
 		provider_trait_fn_name.insert(item.trait_or_fn_name.clone(), fn_name);
 		provider_trait_default_return_value.insert(item.trait_or_fn_name.clone(), item.return_value.clone());
+		provider_trait_covered_variants.insert(item.trait_or_fn_name.clone(), HashSet::new());
 	}
 
 	let new_error_trace = match top_level_error_attr.trace_kind {
@@ -444,6 +458,10 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 			} else {
 				provider_trait_match_body.append_all(quote! {#match_arm_ts => {#return_value}, });
 			}
+			provider_trait_covered_variants
+				.get_mut(trait_name)
+				.expect("trait_name was validated above, so it was also inserted into provider_trait_covered_variants")
+				.insert(variant_ident.clone());
 		}
 	}
 
@@ -461,6 +479,30 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 		};
 
 		let default_return_value = &provider_attr.return_value;
+
+		if is_bare_unreachable_macro(default_return_value) {
+			let covered = provider_trait_covered_variants.get(trait_name);
+			let missing: Vec<&syn::Ident> = enum_variant_details
+				.iter()
+				.map(|variant_detail| &variant_detail.ident)
+				.filter(|ident| !covered.is_some_and(|covered| covered.contains(ident)))
+				.collect();
+			if !missing.is_empty() {
+				let missing_list = missing
+					.iter()
+					.map(|ident| ident.to_string())
+					.collect::<Vec<_>>()
+					.join(", ");
+				return Err(syn::Error::new_spanned(
+					missing[0],
+					format!(
+						"`{0}`'s default is `unreachable!()`, which requires every variant to supply its own \
+						 `#[abpl_provider({0}(..))]`; missing on: {missing_list}",
+						trait_name.to_token_stream(),
+					),
+				));
+			}
+		}
 
 		let provider_trait_match_body = provider_trait_match_body.remove(trait_name).unwrap_or_default();
 
